@@ -1,5 +1,7 @@
 const { Pool } = require('pg');
 
+const LOG_SLOW_QUERIES = process.env.LOG_SLOW_QUERIES === 'true';
+
 /**
  * Pool de conexões com o PostgreSQL.
  * Usa a variável DATABASE_URL do .env (ex: postgres://user:senha@localhost:5432/roomsync)
@@ -27,8 +29,10 @@ async function query(text, params) {
   try {
     const res = await pool.query(text, params);
     const duration = Date.now() - start;
-    if (process.env.NODE_ENV !== 'test' && duration > 100) {
-      console.warn('Query lenta (ms):', duration, { text: text.substring(0, 80) });
+    if (LOG_SLOW_QUERIES && duration > 100) {
+      console.warn('Query lenta (ms):', duration, {
+        text: text.substring(0, 80),
+      });
     }
     return res;
   } catch (err) {
