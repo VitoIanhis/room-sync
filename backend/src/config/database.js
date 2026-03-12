@@ -1,5 +1,7 @@
 const { Pool } = require('pg');
 
+console.log('DATABASE_URL em runtime:', process.env.DATABASE_URL);
+
 const LOG_SLOW_QUERIES = process.env.LOG_SLOW_QUERIES === 'true';
 
 /**
