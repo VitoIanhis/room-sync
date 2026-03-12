@@ -5,6 +5,55 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import api from "../../services/api";
 import { getToken, getUsuario, clearAuth } from "../../utils/auth";
+import DarkVeil from "../DarkVeil";
+import logo from "../../logo.png";
+
+function SalasSelect({ value, onChange, salas }) {
+  const [aberto, setAberto] = useState(false);
+  const selecionada = salas.find((sala) => sala.id === value);
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setAberto((prev) => !prev)}
+        className="w-full px-3 py-2 rounded-lg border-2 border-white/20 bg-[#bcbcbc]/ hover:border-brand-blue duration-300 ease-in-out text-sm text-brand-white outline-none focus:border-brand-blue focus:ring-1 focus:ring-brand-blue transition flex items-center justify-between"
+      >
+        <span className={selecionada ? "" : "text-white/40"}>
+          {selecionada
+            ? `${selecionada.nome} (capacidade ${selecionada.capacidade})`
+            : "Selecione uma sala disponível"}
+        </span>
+        <span className="ml-2 text-sm text-white/60">▼</span>
+      </button>
+
+      {aberto && (
+        <div className="absolute z-20 mt-1 w-full rounded-lg border border-white/20 bg-black/90 shadow-lg max-h-56 overflow-y-auto">
+          {salas.map((sala) => (
+            <button
+              key={sala.id}
+              type="button"
+              onClick={() => {
+                onChange(sala.id);
+                setAberto(false);
+              }}
+              className={`w-full text-left px-3 py-2 text-sm flex items-center justify-between hover:bg-white/10 ${
+                sala.id === value
+                  ? "bg-white/10 text-brand-white"
+                  : "text-white/80"
+              }`}
+            >
+              <span>{sala.nome}</span>
+              <span className="text-[11px] text-white/50">
+                Cap: {sala.capacidade}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function SalasPage() {
   const router = useRouter();
@@ -16,10 +65,19 @@ export default function SalasPage() {
   const [nome, setNome] = useState("");
   const [capacidade, setCapacidade] = useState("");
   const [descricao, setDescricao] = useState("");
+  const [dataReserva, setDataReserva] = useState("");
+  const [horaReserva, setHoraReserva] = useState("");
   const [erroForm, setErroForm] = useState("");
   const [criando, setCriando] = useState(false);
 
   const [usuario, setUsuario] = useState(null);
+  const [salaSelecionadaId, setSalaSelecionadaId] = useState("");
+
+  const salasCatalogo = [
+    { id: "sala-1", nome: "Sala 1", capacidade: 10 },
+    { id: "sala-2", nome: "Sala 2", capacidade: 6 },
+    { id: "sala-3", nome: "Sala 3", capacidade: 20 },
+  ];
 
   useEffect(() => {
     const token = getToken();
@@ -61,23 +119,48 @@ export default function SalasPage() {
     event.preventDefault();
     setErroForm("");
 
-    const capNumber = parseInt(capacidade, 10);
+    let nomeSala = nome;
+    let capacidadeSala = capacidade;
+
+    if (salaSelecionadaId) {
+      const selecionada = salasCatalogo.find(
+        (sala) => sala.id === salaSelecionadaId,
+      );
+      if (selecionada) {
+        nomeSala = selecionada.nome;
+        capacidadeSala = String(selecionada.capacidade ?? "");
+      }
+    }
+
+    const capNumber = parseInt(capacidadeSala, 10);
     if (Number.isNaN(capNumber) || capNumber < 1) {
       setErroForm("Capacidade deve ser um número inteiro maior que zero.");
       return;
     }
 
+    if (!dataReserva || !horaReserva) {
+      setErroForm("Informe a data e horário da reserva.");
+      return;
+    }
+
     try {
       setCriando(true);
+      const metaReserva = `Data: ${dataReserva} | Horário: ${horaReserva}`;
+      const descricaoComReserva = descricao
+        ? `${descricao}\n${metaReserva}`
+        : metaReserva;
       await api.post("/salas", {
-        nome,
+        nome: nomeSala,
         capacidade: capNumber,
-        descricao: descricao || null,
+        descricao: descricaoComReserva,
       });
 
       setNome("");
       setCapacidade("");
       setDescricao("");
+      setDataReserva("");
+      setHoraReserva("");
+      setSalaSelecionadaId("");
       await carregarSalas();
     } catch (error) {
       const status = error?.response?.status;
@@ -102,279 +185,200 @@ export default function SalasPage() {
 
   if (carregando) {
     return (
-      <main
-        style={{
-          minHeight: "100vh",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          fontFamily: "system-ui, sans-serif",
-        }}
-      >
-        <p>Verificando autenticação...</p>
+      <main className="relative flex flex-col items-center justify-center w-screen h-screen overflow-hidden">
+        <div className="pointer-events-none absolute inset-0 z-0">
+          <DarkVeil
+            hueShift={34}
+            noiseIntensity={0}
+            scanlineIntensity={0}
+            speed={0.5}
+            scanlineFrequency={0}
+            warpAmount={0}
+          />
+        </div>
+        <div className="relative z-10 text-sm text-white/80">
+          Verificando autenticação...
+        </div>
       </main>
     );
   }
 
   return (
-    <main
-      style={{
-        minHeight: "100vh",
-        fontFamily: "system-ui, sans-serif",
-        backgroundColor: "#f4f4f5",
-      }}
-    >
-      <header
-        style={{
-          padding: "1rem 2rem",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          backgroundColor: "#111827",
-          color: "#e5e7eb",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: "1.5rem" }}>
-          <h1 style={{ fontSize: "1.25rem" }}>RoomSync – Salas</h1>
-          <nav
-            style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}
-          >
-            <Link
-              href="/dashboard"
-              style={{ fontSize: "0.9rem", color: "#e5e7eb" }}
-            >
-              Dashboard
-            </Link>
-          </nav>
-        </div>
+    <main className="relative flex flex-col items-center justify-center w-screen h-screen overflow-hidden">
+      <div className="pointer-events-none absolute inset-0 z-0">
+        <DarkVeil
+          hueShift={34}
+          noiseIntensity={0}
+          scanlineIntensity={0}
+          speed={0.5}
+          scanlineFrequency={0}
+          warpAmount={0}
+        />
+      </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
-          {usuario && (
-            <span style={{ fontSize: "0.9rem", opacity: 0.9 }}>
-              Logado como <strong>{usuario.nome || usuario.email}</strong>
-            </span>
-          )}
-          <button
-            onClick={handleLogout}
-            style={{
-              padding: "0.4rem 0.75rem",
-              borderRadius: 4,
-              border: "1px solid #f97316",
-              backgroundColor: "#111827",
-              color: "#f97316",
-              fontSize: "0.85rem",
-              cursor: "pointer",
-            }}
-          >
-            Sair
-          </button>
-        </div>
-      </header>
-
-      <section style={{ padding: "2rem", display: "grid", gap: "2rem" }}>
-        <section>
-          <h2 style={{ fontSize: "1.3rem", marginBottom: "0.5rem" }}>
-            Criar nova sala
-          </h2>
-          <p style={{ marginBottom: "1rem", color: "#4b5563" }}>
-            Preencha os campos abaixo para cadastrar uma nova sala.
-          </p>
-
-          {erroForm && (
-            <div
-              style={{
-                marginBottom: "1rem",
-                padding: "0.75rem",
-                borderRadius: 4,
-                backgroundColor: "#fee2e2",
-                color: "#b91c1c",
-                fontSize: "0.9rem",
-              }}
-            >
-              {erroForm}
+      <div className="relative z-10 w-full px-4 md:px-10 flex flex-col gap-4">
+        <header className="flex items-center justify-between rounded-2xl border border-white/20 bg-black/40 backdrop-blur-xl px-5 py-3 shadow-[0_8px_32px_rgba(0,0,0,0.75)]">
+          <div className="flex items-center gap-3 text-white">
+            <img src={logo.src} alt="RoomSync Logo" width={32} height={32} />
+            <div className="flex flex-col leading-tight">
+              <span className="text-sm uppercase tracking-[0.25em] text-white/50">
+                Reservas
+              </span>
             </div>
-          )}
-
-          <form
-            onSubmit={handleCriarSala}
-            style={{
-              display: "grid",
-              gap: "0.75rem",
-              maxWidth: 480,
-              backgroundColor: "#fff",
-              padding: "1.25rem",
-              borderRadius: 8,
-              boxShadow: "0 1px 4px rgba(0,0,0,0.05)",
-            }}
-          >
-            <label style={{ fontSize: "0.9rem" }}>
-              Nome da sala
-              <input
-                type="text"
-                value={nome}
-                onChange={(e) => setNome(e.target.value)}
-                required
-                minLength={2}
-                style={{
-                  width: "100%",
-                  marginTop: "0.25rem",
-                  padding: "0.5rem 0.75rem",
-                  borderRadius: 4,
-                  border: "1px solid #d4d4d8",
-                }}
-              />
-            </label>
-
-            <label style={{ fontSize: "0.9rem" }}>
-              Capacidade
-              <input
-                type="number"
-                value={capacidade}
-                onChange={(e) => setCapacidade(e.target.value)}
-                required
-                min={1}
-                style={{
-                  width: "100%",
-                  marginTop: "0.25rem",
-                  padding: "0.5rem 0.75rem",
-                  borderRadius: 4,
-                  border: "1px solid #d4d4d8",
-                }}
-              />
-            </label>
-
-            <label style={{ fontSize: "0.9rem" }}>
-              Descrição (opcional)
-              <textarea
-                value={descricao}
-                onChange={(e) => setDescricao(e.target.value)}
-                rows={3}
-                style={{
-                  width: "100%",
-                  marginTop: "0.25rem",
-                  padding: "0.5rem 0.75rem",
-                  borderRadius: 4,
-                  border: "1px solid #d4d4d8",
-                  resize: "vertical",
-                }}
-              />
-            </label>
-
+          </div>
+          <div className="flex items-center gap-2 text-base">
             <button
-              type="submit"
-              disabled={criando}
-              style={{
-                marginTop: "0.25rem",
-                padding: "0.6rem 0.75rem",
-                borderRadius: 4,
-                border: "none",
-                backgroundColor: criando ? "#94a3b8" : "#16a34a",
-                color: "#fff",
-                fontWeight: 600,
-                cursor: criando ? "default" : "pointer",
-              }}
+              type="button"
+              onClick={() => router.push("/dashboard")}
+              className="inline-flex items-center gap-2 rounded-lg border border-white/20 bg-white/5 px-3 py-1.5 text-[11px] font-medium text-white hover:bg-white/10 hover:-translate-y-[1px] transition duration-200"
             >
-              {criando ? "Salvando..." : "Criar sala"}
+              <span className="text-base">Dashboard</span>
             </button>
-          </form>
-        </section>
-
-        <section>
-          <h2 style={{ fontSize: "1.3rem", marginBottom: "0.5rem" }}>
-            Salas cadastradas
-          </h2>
-          <p style={{ marginBottom: "1rem", color: "#4b5563" }}>
-            A listagem abaixo mostra todas as salas registradas no sistema.
-          </p>
-
-          {erro && (
-            <div
-              style={{
-                marginBottom: "1rem",
-                padding: "0.75rem",
-                borderRadius: 4,
-                backgroundColor: "#fee2e2",
-                color: "#b91c1c",
-                fontSize: "0.9rem",
-              }}
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="inline-flex items-center gap-2 rounded-lg border border-white/20 bg-white/5 px-3 py-1.5 text-base font-medium text-white hover:bg-white/10 hover:-translate-y-[1px] transition duration-200"
             >
-              {erro}
-            </div>
-          )}
+              <span>Sair</span>
+            </button>
+          </div>
+        </header>
 
-          {carregandoSalas ? (
-            <p>Carregando salas...</p>
-          ) : salas.length === 0 ? (
-            <p style={{ color: "#6b7280" }}>
-              Nenhuma sala cadastrada até o momento.
-            </p>
-          ) : (
-            <div
-              style={{
-                display: "grid",
-                gap: "0.75rem",
-              }}
-            >
-              {salas.map((sala) => (
-                <div
-                  key={sala.id}
-                  style={{
-                    backgroundColor: "#fff",
-                    padding: "1rem",
-                    borderRadius: 8,
-                    boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    gap: "1rem",
-                  }}
-                >
-                  <div>
-                    <h3
-                      style={{
-                        fontSize: "1rem",
-                        fontWeight: 600,
-                        marginBottom: "0.25rem",
-                      }}
-                    >
-                      {sala.nome}
-                    </h3>
-                    <p
-                      style={{
-                        fontSize: "0.9rem",
-                        color: "#4b5563",
-                        marginBottom: "0.25rem",
-                      }}
-                    >
-                      Capacidade: <strong>{sala.capacidade}</strong> pessoas
-                    </p>
-                    {sala.descricao && (
-                      <p
-                        style={{
-                          fontSize: "0.9rem",
-                          color: "#6b7280",
-                          maxWidth: 500,
-                        }}
-                      >
-                        {sala.descricao}
-                      </p>
-                    )}
-                  </div>
-                  <span
-                    style={{
-                      fontSize: "0.75rem",
-                      color: "#9ca3af",
-                    }}
-                  >
-                    ID: {sala.id}
-                  </span>
+        <section className="rounded-2xl border border-white/20 w-full bg-black/70 backdrop-blur-2xl px-6 py-6 shadow-[0_18px_48px_rgba(0,0,0,0.85)]">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-white">
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-col gap-1">
+                <h2 className="text-xl font-semibold">Nova reserva</h2>
+                <p className="text-sm text-white/60">
+                  Escolha uma sala disponível e defina a data, horário e
+                  detalhes da sua reserva.
+                </p>
+              </div>
+
+              {erroForm && (
+                <div className="rounded-lg border border-red-700/40 bg-red-900/20 px-3 py-2 text-sm text-red-300">
+                  {erroForm}
                 </div>
-              ))}
+              )}
+
+              <form onSubmit={handleCriarSala} className="flex flex-col gap-6">
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-medium text-white uppercase tracking-wide">
+                    Sala
+                  </label>
+                  <SalasSelect
+                    value={salaSelecionadaId}
+                    onChange={setSalaSelecionadaId}
+                    salas={salasCatalogo}
+                  />
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-medium text-white uppercase tracking-wide">
+                    Nome da reserva
+                  </label>
+                  <input
+                    type="text"
+                    value={nome}
+                    onChange={(e) => setNome(e.target.value)}
+                    required
+                    minLength={2}
+                    placeholder="Ex: Reunião de planejamento"
+                    className="w-full px-3 py-2 rounded-lg border-2 border-white/20 bg-[#bcbcbc]/10 hover:border-brand-blue duration-300 ease-in-out transform focus:-translate-y-1 text-sm text-brand-white placeholder-white/40 outline-none focus:border-brand-blue focus:ring-1 focus:ring-brand-blue transition"
+                  />
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-medium text-white uppercase tracking-wide">
+                    Capacidade (opcional)
+                  </label>
+                  <input
+                    type="number"
+                    value={capacidade}
+                    onChange={(e) => setCapacidade(e.target.value)}
+                    min={1}
+                    placeholder="Deixe em branco para usar a capacidade da sala"
+                    className="w-full px-3 py-2 rounded-lg border-2 border-white/20 bg-[#bcbcbc]/10 hover:border-brand-blue duration-300 ease-in-out transform focus:-translate-y-1 text-sm text-brand-white placeholder-white/40 outline-none focus:border-brand-blue focus:ring-1 focus:ring-brand-blue transition"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-medium text-white uppercase tracking-wide">
+                      Data da reserva
+                    </label>
+                    <input
+                      type="date"
+                      value={dataReserva}
+                      onChange={(e) => setDataReserva(e.target.value)}
+                      required
+                      className="w-full px-3 py-2 rounded-lg border-2 border-white/20 bg-[#bcbcbc]/10 hover:border-brand-blue duration-300 ease-in-out transform focus:-translate-y-1 text-sm text-brand-white placeholder-white/40 outline-none focus:border-brand-blue focus:ring-1 focus:ring-brand-blue transition"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs font-medium text-white uppercase tracking-wide">
+                      Horário da reserva
+                    </label>
+                    <input
+                      type="time"
+                      value={horaReserva}
+                      onChange={(e) => setHoraReserva(e.target.value)}
+                      required
+                      className="w-full px-3 py-2 rounded-lg border-2 border-white/20 bg-[#bcbcbc]/10 hover:border-brand-blue duration-300 ease-in-out transform focus:-translate-y-1 text-sm text-brand-white placeholder-white/40 outline-none focus:border-brand-blue focus:ring-1 focus:ring-brand-blue transition"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-1">
+                  <label className="text-xs font-medium text-white uppercase tracking-wide">
+                    Descrição (opcional)
+                  </label>
+                  <textarea
+                    placeholder="Ex: Reunião de planejamento"
+                    value={descricao}
+                    onChange={(e) => setDescricao(e.target.value)}
+                    rows={3}
+                    className="w-full px-3 py-2 rounded-lg border-2 border-white/20 bg-[#bcbcbc]/10 hover:border-brand-blue duration-300 ease-in-out transform focus:-translate-y-1 text-sm text-brand-white placeholder-white/40 outline-none focus:border-brand-blue focus:ring-1 focus:ring-brand-blue transition resize-y"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={criando}
+                  className="mt-2 w-full rounded-lg px-3 py-2 shadow-md duration-300 ease-in-out bg-brand-blue hover:bg-brand-blue/80 hover:-translate-y-1 text-sm font-semibold text-white transition disabled:opacity-70 disabled:cursor-not-allowed"
+                >
+                  {criando ? "Salvando..." : "Criar reserva"}
+                </button>
+              </form>
             </div>
-          )}
+
+            <div className="flex flex-col gap-3 border border-white/10 rounded-2xl bg-black/60 px-4 py-4">
+              <div className="flex flex-col gap-1">
+                <h3 className="text-xl font-semibold">Salas disponíveis</h3>
+                <p className="text-sm text-white/60">
+                  Estas são as salas que podem ser usadas nas suas reservas.
+                </p>
+              </div>
+              <ul className="space-y-2 text-base">
+                {salasCatalogo.map((sala) => (
+                  <li
+                    key={sala.id}
+                    className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-2"
+                  >
+                    <div className="flex flex-col">
+                      <span className="font-medium">{sala.nome}</span>
+                      <span className="text-sm text-white/60">
+                        Capacidade: {sala.capacidade} pessoas
+                      </span>
+                    </div>
+                    <span className="text-sm text-white/40">ID: {sala.id}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
         </section>
-      </section>
+      </div>
     </main>
   );
 }
-
