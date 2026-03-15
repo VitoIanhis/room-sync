@@ -13,7 +13,7 @@ app.use('/', authRoutes);
 app.use('/salas', salasRoutes);
 
 app.get('/', (req, res) => {
-  res.json({ message: 'RoomSync API - AC1 backend iniciado' });
+  res.json({ message: 'RoomSync API backend iniciado' });
 });
 
 module.exports = app;

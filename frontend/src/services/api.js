@@ -5,7 +5,7 @@ const baseURL =
 
 /**
  * Instância central da API do RoomSync.
- * Usa axios para falar com o backend da AC1.
+ * Usa axios para falar com o backend do RoomSync.
  */
 const api = axios.create({
   baseURL,

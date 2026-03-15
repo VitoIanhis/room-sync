@@ -2,7 +2,7 @@ import "./globals.css";
 
 export const metadata = {
   title: "RoomSync",
-  description: "Sistema acadêmico de reserva de salas - AC1",
+  description: "Sistema de reserva de salas RoomSync",
 };
 
 export default function RootLayout({ children }) {

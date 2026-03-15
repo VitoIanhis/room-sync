@@ -1,4 +1,4 @@
--- RoomSync AC1 - Schema do banco de dados PostgreSQL
+-- RoomSync - Schema do banco de dados PostgreSQL
 -- Execute este script após criar o banco (ex: createdb roomsync)
 
 -- Tabela de usuários (cadastro e login)
@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS usuarios (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Tabela de salas (CRUD básico na AC1; reservas em entregas futuras)
+-- Tabela de salas (CRUD básico; reservas em entregas futuras)
 CREATE TABLE IF NOT EXISTS salas (
   id SERIAL PRIMARY KEY,
   nome VARCHAR(100) NOT NULL,
