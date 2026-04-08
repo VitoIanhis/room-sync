@@ -21,3 +21,20 @@ CREATE TABLE IF NOT EXISTS salas (
 
 -- Índice para buscas por email no login
 CREATE INDEX IF NOT EXISTS idx_usuarios_email ON usuarios(email);
+
+-- Tabela de reservas
+CREATE TABLE IF NOT EXISTS reservas (
+  id SERIAL PRIMARY KEY,
+  usuario_id INTEGER NOT NULL,
+  sala_id INTEGER NOT NULL,
+  data DATE NOT NULL,
+  hora_inicio TIME NOT NULL,
+  hora_fim TIME NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+  FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE,
+  FOREIGN KEY (sala_id) REFERENCES salas(id) ON DELETE CASCADE
+);
+
+-- Índice para consultas de disponibilidade por sala e data
+CREATE INDEX IF NOT EXISTS idx_reservas_sala_data ON reservas (sala_id, data);
