@@ -1,12 +1,50 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { getUsuario, getToken, clearAuth } from "../../utils/auth";
 import api from "../../services/api";
 import DarkVeil from "../DarkVeil";
 import logo from "../../logo.png";
+
+function dataLocalHoje() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+/** Aceita TIME do Postgres (HH:MM:SS) ou input time (HH:MM). */
+function minutosDesdeMeiaNoite(t) {
+  if (t == null) return 0;
+  const s = String(t).trim();
+  const [h, min] = s.slice(0, 8).split(":");
+  const hh = parseInt(h, 10);
+  const mm = parseInt(min, 10);
+  if (Number.isNaN(hh) || Number.isNaN(mm)) return 0;
+  return hh * 60 + mm;
+}
+
+function minutosAgora() {
+  const d = new Date();
+  return d.getHours() * 60 + d.getMinutes();
+}
+
+function formatarDataReserva(valor) {
+  if (!valor) return "—";
+  const s = String(valor).slice(0, 10);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    const [y, m, d] = s.split("-");
+    return `${d}/${m}/${y}`;
+  }
+  return s;
+}
+
+function sliceHora(t) {
+  if (t == null) return "—";
+  return String(t).slice(0, 5);
+}
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -14,8 +52,8 @@ export default function DashboardPage() {
   const [usuario, setUsuario] = useState(null);
   const [totalSalas, setTotalSalas] = useState(0);
   const [carregandoSalas, setCarregandoSalas] = useState(true);
-  const [reservaHoje, setReservaHoje] = useState(null);
-  const [historicoReservas, setHistoricoReservas] = useState([]);
+  const [reservas, setReservas] = useState([]);
+  const [carregandoReservas, setCarregandoReservas] = useState(true);
   const [salasDashboard, setSalasDashboard] = useState([]);
   const [mostrarModalSala, setMostrarModalSala] = useState(false);
   const [novaSalaNome, setNovaSalaNome] = useState("");
@@ -33,72 +71,95 @@ export default function DashboardPage() {
     const user = getUsuario();
     setUsuario(user);
 
-    async function carregarResumoSalas() {
+    async function carregarDashboard() {
       try {
         setCarregandoSalas(true);
-        const response = await api.get("/salas");
-        const lista = response?.data?.salas || [];
+        setCarregandoReservas(true);
+        const [salasRes, reservasRes] = await Promise.all([
+          api.get("/salas"),
+          api.get("/reservas"),
+        ]);
+        const lista = salasRes?.data?.salas || [];
         setTotalSalas(lista.length);
         setSalasDashboard(lista);
-
-        const hojeStr = new Date().toISOString().slice(0, 10); // yyyy-mm-dd
-        let encontrada = null;
-
-        const historico = lista
-          .map((sala) => {
-            if (!sala.descricao) {
-              return {
-                id: sala.id,
-                nome: sala.nome,
-                capacidade: sala.capacidade,
-                data: null,
-                hora: null,
-              };
-            }
-
-            const desc = String(sala.descricao);
-            const dataMatch = desc.match(
-              /Data:\s*([0-9]{4}-[0-9]{2}-[0-9]{2})/,
-            );
-            const horaMatch = desc.match(/Horário:\s*([0-9]{2}:[0-9]{2})/);
-
-            const data = dataMatch ? dataMatch[1] : null;
-            const hora = horaMatch ? horaMatch[1] : null;
-
-            if (data && hora && data === hojeStr) {
-              encontrada = {
-                nome: sala.nome,
-                capacidade: sala.capacidade,
-                data,
-                hora,
-              };
-            }
-
-            return {
-              id: sala.id,
-              nome: sala.nome,
-              capacidade: sala.capacidade,
-              data,
-              hora,
-            };
-          })
-          .reverse()
-          .slice(0, 5);
-
-        setReservaHoje(encontrada);
-        setHistoricoReservas(historico);
+        setReservas(reservasRes?.data?.reservas || []);
       } catch (error) {
         setTotalSalas(0);
-        setReservaHoje(null);
-        setHistoricoReservas([]);
+        setSalasDashboard([]);
+        setReservas([]);
       } finally {
         setCarregandoSalas(false);
+        setCarregandoReservas(false);
         setCarregando(false);
       }
     }
 
-    carregarResumoSalas();
+    carregarDashboard();
   }, [router]);
+
+  const hojeStr = dataLocalHoje();
+
+  /** Próximas reservas: dias futuros + hoje ainda não encerrado. Hoje em destaque na lista. */
+  const reservasProximas = useMemo(() => {
+    const agora = minutosAgora();
+    return reservas
+      .filter((r) => {
+        const ds = String(r.data).slice(0, 10);
+        if (ds > hojeStr) return true;
+        if (ds < hojeStr) return false;
+        return minutosDesdeMeiaNoite(r.hora_fim) >= agora;
+      })
+      .sort((a, b) => {
+        const da = String(a.data).slice(0, 10);
+        const db = String(b.data).slice(0, 10);
+        const aHoje = da === hojeStr;
+        const bHoje = db === hojeStr;
+        if (aHoje !== bHoje) return aHoje ? -1 : 1;
+        if (da !== db) return da.localeCompare(db);
+        return (
+          minutosDesdeMeiaNoite(a.hora_inicio) -
+          minutosDesdeMeiaNoite(b.hora_inicio)
+        );
+      });
+  }, [reservas, hojeStr]);
+
+  const reservasProximasHoje = useMemo(
+    () =>
+      reservasProximas.filter((r) => String(r.data).slice(0, 10) === hojeStr),
+    [reservasProximas, hojeStr],
+  );
+
+  const reservasProximasFuturas = useMemo(
+    () =>
+      reservasProximas.filter((r) => String(r.data).slice(0, 10) !== hojeStr),
+    [reservasProximas, hojeStr],
+  );
+
+  const listaHistoricoPassadas = useMemo(() => {
+    const agora = minutosAgora();
+    return reservas.filter((r) => {
+      const ds = String(r.data).slice(0, 10);
+      if (ds < hojeStr) return true;
+      if (ds > hojeStr) return false;
+      return minutosDesdeMeiaNoite(r.hora_fim) < agora;
+    });
+  }, [reservas, hojeStr]);
+
+  const totalHistoricoPassadas = listaHistoricoPassadas.length;
+
+  const historicoReservasPassadas = useMemo(() => {
+    return [...listaHistoricoPassadas]
+      .sort((a, b) => {
+        const da = String(a.data).slice(0, 10);
+        const db = String(b.data).slice(0, 10);
+        if (db !== da) return db.localeCompare(da);
+        return (
+          minutosDesdeMeiaNoite(b.hora_inicio) -
+          minutosDesdeMeiaNoite(a.hora_inicio)
+        );
+      })
+      .slice(0, 8);
+  }, [listaHistoricoPassadas]);
 
   function handleLogout() {
     clearAuth();
@@ -199,19 +260,26 @@ export default function DashboardPage() {
               </span>
             </div>
           </div>
-          <div className="flex items-center gap-2 text-base">
+          <div className="flex flex-wrap items-center justify-end gap-2 text-base">
             <button
               type="button"
-              onClick={() => router.push("/salas")}
-              className="inline-flex items-center gap-2 rounded-lg border border-white/20 bg-white/5 px-3 py-1.5 text-[11px] font-medium text-white hover:bg-white/10 hover:-translate-y-[1px] transition duration-200"
+              onClick={() => router.push("/reservas")}
+              className="inline-flex items-center gap-2 rounded-lg border border-white/20 bg-white/5 px-3 py-1.5 text-[11px] font-medium text-white hover:bg-white/10 hover:-translate-y-px transition duration-200"
             >
               <span className="text-xl leading-none">+</span>
               <span className="text-base">Nova reserva</span>
             </button>
             <button
               type="button"
+              onClick={() => router.push("/salas")}
+              className="inline-flex items-center gap-2 rounded-lg border border-white/20 bg-white/5 px-3 py-1.5 text-[11px] font-medium text-white hover:bg-white/10 hover:-translate-y-px transition duration-200"
+            >
+              <span className="text-base">Salas</span>
+            </button>
+            <button
+              type="button"
               onClick={handleLogout}
-              className="inline-flex items-center gap-2 rounded-lg border border-white/20 bg-white/5 px-3 py-1.5 text-base font-medium text-white hover:bg-white/10 hover:-translate-y-[1px] transition duration-200"
+              className="inline-flex items-center gap-2 rounded-lg border border-white/20 bg-white/5 px-3 py-1.5 text-base font-medium text-white hover:bg-white/10 hover:-translate-y-px transition duration-200"
             >
               <span>Sair</span>
             </button>
@@ -232,45 +300,102 @@ export default function DashboardPage() {
 
             <div className="flex-1 grid grid-cols-1 md:grid-cols-[minmax(0,1.1fr)_minmax(0,1.3fr)] gap-6 items-stretch">
               <div className="flex flex-col h-full gap-4">
-                <button
-                  type="button"
-                  onClick={() => router.push("/salas")}
-                  className="relative flex-1 text-left rounded-xl border border-white/10 bg-white/5/40 px-5 py-5 flex flex-col gap-2 overflow-hidden"
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => router.push("/reservas")}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      router.push("/reservas");
+                    }
+                  }}
+                  className="relative flex-1 text-left rounded-xl border border-white/10 bg-white/5 px-5 py-5 flex flex-col gap-3 hover:bg-white/10 hover:-translate-y-[2px] transition duration-200 cursor-pointer"
                 >
-                  <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
-                  <div className="relative z-10 flex items-center justify-between">
-                    <span className="text-lg uppercase tracking-[0.18em] text-white/50">
-                      Reserva de hoje
-                    </span>
-                    <span className="inline-flex items-center justify-center rounded-full border border-white/30 bg-black/60 px-2 py-1 text-[10px] uppercase tracking-[0.18em] text-white/60">
-                      🔒 Em breve
+                  <span className="text-lg uppercase flex items-center justify-between tracking-[0.18em] text-white/50">
+                    Reservas
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        router.push("/reservas");
+                      }}
+                      className="inline-flex gap-1 rounded-lg border border-white/30 bg-black/60 px-2 py-1 text-[11px] font-medium text-white hover:bg-white/10 transition duration-200"
+                    >
+                      <span className="text-base leading-none">+</span>
+                      <span className="text-sm pl-1">Nova reserva</span>
+                    </button>
+                  </span>
+                  <span className="text-base text-white/50">
+                    Próximas reservas (outros dias) e o que ainda falta hoje.
+                    Itens de hoje aparecem em destaque.
+                  </span>
+                  <div className="mt-3 flex items-center justify-between gap-2">
+                    <span className="text-sm text-white/60">
+                      Total:{" "}
+                      <span className="font-semibold">
+                        {carregandoReservas ? "…" : reservasProximas.length}
+                      </span>
                     </span>
                   </div>
-                  <p className="relative z-10 mt-2 text-sm text-white/60">
-                    Visualize rapidamente a próxima reserva do dia assim que o
-                    módulo de reservas estiver disponível.
-                  </p>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => router.push("/salas")}
-                  className="relative flex-1 text-left rounded-xl border border-white/10 bg-white/5/40 px-5 py-5 flex flex-col gap-2 overflow-hidden"
-                >
-                  <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
-                  <div className="relative z-10 flex items-center justify-between">
-                    <span className="text-lg uppercase tracking-[0.18em] text-white/50">
-                      Reservas ativas
-                    </span>
-                    <span className="inline-flex items-center justify-center rounded-full border border-white/30 bg-black/60 px-2 py-1 text-[10px] uppercase tracking-[0.18em] text-white/60">
-                      🔒 Em breve
-                    </span>
-                  </div>
-                  <p className="relative z-10 mt-2 text-sm text-white/60">
-                    Aqui você verá todas as reservas que estiverem acontecendo
-                    no momento.
-                  </p>
-                </button>
+                  <ul className="mt-2 space-y-2 text-base text-white">
+                    {carregandoReservas && (
+                      <li className="text-sm text-white/50">Carregando…</li>
+                    )}
+                    {!carregandoReservas && reservasProximas.length === 0 && (
+                      <li className="text-sm text-white/50">
+                        Nenhuma reserva futura ou pendente para hoje.
+                      </li>
+                    )}
+                    {!carregandoReservas &&
+                      reservasProximasHoje.map((r) => (
+                        <li
+                          key={r.id}
+                          className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between rounded-lg border border-brand-blue/40 bg-brand-blue/10 px-3 py-2.5"
+                        >
+                          <span className="flex items-center gap-2 min-w-0">
+                            <span className="shrink-0 text-[14px] uppercase tracking-[0.12em] font-bold text-brand-blue">
+                              Hoje
+                            </span>
+                            <span className="truncate font-normal">
+                              | {r.sala_nome}
+                            </span>
+                          </span>
+                          <span className="text-sm text-white/60 shrink-0 sm:text-right">
+                            {sliceHora(r.hora_inicio)} – {sliceHora(r.hora_fim)}
+                          </span>
+                        </li>
+                      ))}
+                  </ul>
+                  {reservasProximasHoje.length > 0 &&
+                    reservasProximasFuturas.length > 0 && (
+                      <span className="mt-2 h-px w-full bg-gradient-to-r from-white/10 via-white/40 to-white/10" />
+                    )}
+                  <ul className="mt-2 space-y-2 text-base text-white">
+                    {!carregandoReservas &&
+                      reservasProximasFuturas.map((r) => (
+                        <li
+                          key={r.id}
+                          className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-2"
+                        >
+                          <span className="truncate font-medium">
+                            {r.sala_nome}
+                          </span>
+                          <span className="text-sm text-white/60 shrink-0 sm:text-right">
+                            {formatarDataReserva(r.data)} ·{" "}
+                            {sliceHora(r.hora_inicio)} – {sliceHora(r.hora_fim)}
+                          </span>
+                        </li>
+                      ))}
+                    {!carregandoReservas &&
+                      reservasProximasFuturas.length === 0 &&
+                      reservasProximasHoje.length > 0 && (
+                        <li className="text-sm text-white/45 pt-1">
+                          Sem outras datas agendadas.
+                        </li>
+                      )}
+                  </ul>
+                </div>
 
                 <div
                   onClick={() => router.push("/salas")}
@@ -284,7 +409,7 @@ export default function DashboardPage() {
                         e.stopPropagation();
                         setMostrarModalSala(true);
                       }}
-                      className="  gap-1 rounded-lg border border-white/30 bg-black/60 px-2 py-1 text-[11px] font-medium text-white hover:bg-white/10 transition duration-200"
+                      className="inline-flex gap-1 rounded-lg border border-white/30 bg-black/60 px-2 py-1 text-[11px] font-medium text-white hover:bg-white/10 transition duration-200"
                     >
                       <span className="text-base leading-none">+</span>
                       <span className="text-sm pl-1">Criar sala</span>
@@ -324,25 +449,72 @@ export default function DashboardPage() {
                 </div>
               </div>
 
-              <button
-                type="button"
-                onClick={() => router.push("/salas")}
-                className="relative h-full text-left rounded-xl border border-white/10 bg-white/5/40 px-5 py-5 flex flex-col gap-3 overflow-hidden"
+              <div
+                role="button"
+                tabIndex={0}
+                onClick={() => router.push("/reservas")}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    router.push("/reservas");
+                  }
+                }}
+                className="relative h-full min-h-[200px] text-left rounded-xl border border-white/10 bg-white/5 px-5 py-5 flex flex-col gap-3 hover:bg-white/10 hover:-translate-y-[2px] transition duration-200 cursor-pointer"
               >
-                <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
-                <div className="relative z-10 flex items-center justify-between">
-                  <span className="text-lg uppercase tracking-[0.18em] text-white/50">
-                    Histórico de reservas
-                  </span>
-                  <span className="inline-flex items-center justify-center rounded-full border border-white/30 bg-black/60 px-2 py-1 text-[10px] uppercase tracking-[0.18em] text-white/60">
-                    🔒 Em breve
+                <span className="text-lg uppercase flex items-center justify-between tracking-[0.18em] text-white/50">
+                  Histórico de reservas
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      router.push("/reservas");
+                    }}
+                    className="inline-flex gap-1 rounded-lg border border-white/30 bg-black/60 px-2 py-1 text-[11px] font-medium text-white hover:bg-white/10 transition duration-200"
+                  >
+                    <span className="text-sm">Ver todas</span>
+                  </button>
+                </span>
+                <span className="text-base text-white/50">
+                  Reservas já encerradas: dias anteriores ou intervalo de hoje
+                  já concluído.
+                </span>
+                <div className="mt-3 flex items-center justify-between gap-2">
+                  <span className="text-sm text-white/60">
+                    Total encerradas:{" "}
+                    <span className="font-semibold">
+                      {carregandoReservas ? "…" : totalHistoricoPassadas}
+                    </span>
+                    {totalHistoricoPassadas > 8 ? (
+                      <span className="text-white/45"> · últimas 8 abaixo</span>
+                    ) : null}
                   </span>
                 </div>
-                <p className="relative z-10 mt-2 text-sm text-white/60">
-                  Em uma próxima etapa, você poderá consultar todas as reservas
-                  passadas com filtros por data, sala e responsável.
-                </p>
-              </button>
+                <span className="mt-2 h-px w-full bg-gradient-to-r from-white/10 via-white/40 to-white/10" />
+                <ul className="mt-1 space-y-1 text-base text-white flex-1">
+                  {carregandoReservas && (
+                    <li className="text-sm text-white/50">Carregando…</li>
+                  )}
+                  {!carregandoReservas &&
+                    historicoReservasPassadas.length === 0 && (
+                      <li className="text-sm text-white/50">
+                        Nenhuma reserva encerrada ainda.
+                      </li>
+                    )}
+                  {!carregandoReservas &&
+                    historicoReservasPassadas.map((r) => (
+                      <li
+                        key={r.id}
+                        className="flex flex-col gap-0.5 sm:flex-row sm:items-center sm:justify-between sm:gap-2"
+                      >
+                        <span className="truncate">{r.sala_nome}</span>
+                        <span className="text-sm text-white/50 shrink-0">
+                          {formatarDataReserva(r.data)} ·{" "}
+                          {sliceHora(r.hora_inicio)} – {sliceHora(r.hora_fim)}
+                        </span>
+                      </li>
+                    ))}
+                </ul>
+              </div>
             </div>
           </div>
         </section>

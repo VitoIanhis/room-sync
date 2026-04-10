@@ -34,6 +34,17 @@ input[type="time"] {
   color-scheme: dark;
 }
 
+/* Select nativo: alguns navegadores forçam fundo claro; alinha aos inputs do RoomSync */
+select.reservation-sala-select {
+  background-color: rgba(188, 188, 188, 0.1) !important;
+  color: var(--color-brand-white) !important;
+}
+
+select.reservation-sala-select option {
+  background-color: #18181b;
+  color: var(--color-brand-white);
+}
+
 .dashboard-scroll {
   scrollbar-width: thin;
   scrollbar-color: var(--color-brand-blue) transparent;
