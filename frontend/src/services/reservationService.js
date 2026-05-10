@@ -17,3 +17,13 @@ export async function getReservations() {
   const response = await api.get("/reservas");
   return response.data?.reservas ?? [];
 }
+
+/**
+ * Cancela uma reserva do usuário autenticado.
+ * @param {number|string} id
+ * @returns {Promise<{ mensagem?: string }>}
+ */
+export async function deleteReservation(id) {
+  const response = await api.delete(`/reservas/${id}`);
+  return response.data;
+}

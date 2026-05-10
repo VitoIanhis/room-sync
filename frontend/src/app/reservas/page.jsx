@@ -172,6 +172,9 @@ export default function ReservasPage() {
                 reservas={reservas}
                 carregando={carregandoReservas}
                 erro={erroLista}
+                onReservationRemoved={(id) =>
+                  setReservas((prev) => prev.filter((r) => r.id !== id))
+                }
               />
             </div>
           </div>

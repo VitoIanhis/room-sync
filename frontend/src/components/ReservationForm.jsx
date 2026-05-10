@@ -59,6 +59,15 @@ export default function ReservationForm({
         router.replace("/login");
         return;
       }
+      if (status === 400) {
+        const apiErro = error?.response?.data?.erro;
+        setErro(
+          typeof apiErro === "string" && apiErro
+            ? apiErro
+            : "Dados inválidos ou conflito de horário."
+        );
+        return;
+      }
       const msg =
         error?.response?.data?.erro ||
         "Não foi possível criar a reserva. Tente novamente.";
@@ -75,12 +84,6 @@ export default function ReservationForm({
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-      {erro && (
-        <div className="rounded-lg border border-red-700/40 bg-red-900/20 px-3 py-2 text-sm text-red-300">
-          {erro}
-        </div>
-      )}
-
       <div className="flex flex-col gap-1">
         <label className="text-xs font-medium text-white uppercase tracking-wide">
           Sala
@@ -154,6 +157,15 @@ export default function ReservationForm({
       >
         {enviando ? "Salvando..." : "Criar reserva"}
       </button>
+
+      {erro && (
+        <div
+          className="rounded-lg border border-red-700/40 bg-red-900/20 px-3 py-2 text-sm text-red-300"
+          role="alert"
+        >
+          {erro}
+        </div>
+      )}
     </form>
   );
 }
