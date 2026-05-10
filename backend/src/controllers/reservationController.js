@@ -20,9 +20,9 @@ async function createReserva(req, res) {
       return res.status(400).json({ erro: 'hora_fim deve ser maior que hora_inicio.' });
     }
 
-    const duplicada = await reservationModel.findExact(sala_id, data, hora_inicio, hora_fim);
-    if (duplicada) {
-      return res.status(409).json({ erro: 'Já existe uma reserva idêntica para essa sala, data e horário.' });
+    const conflito = await reservationModel.findConflict(sala_id, data, hora_inicio, hora_fim);
+    if (conflito) {
+      return res.status(400).json({ erro: 'Conflito de horário: já existe uma reserva para essa sala nesse intervalo.' });
     }
 
     const reserva = await reservationModel.create(usuario_id, sala_id, data, hora_inicio, hora_fim);
@@ -48,4 +48,21 @@ async function listReservas(req, res) {
   }
 }
 
-module.exports = { createReserva, listReservas };
+async function deleteReserva(req, res) {
+  try {
+    const usuario_id = req.user.id;
+    const { id } = req.params;
+
+    const deletada = await reservationModel.deleteById(id, usuario_id);
+    if (!deletada) {
+      return res.status(404).json({ erro: 'Reserva não encontrada ou sem permissão para excluí-la.' });
+    }
+
+    return res.status(200).json({ mensagem: 'Reserva excluída com sucesso.' });
+  } catch (err) {
+    console.error('Erro ao excluir reserva:', err);
+    return res.status(500).json({ erro: 'Erro ao excluir reserva.' });
+  }
+}
+
+module.exports = { createReserva, listReservas, deleteReserva };
